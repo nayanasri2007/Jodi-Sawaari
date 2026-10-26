@@ -4,6 +4,9 @@ from app.matching import is_match
 from app.database import engine, Base, get_db
 from app import models, schemas
 from itertools import combinations
+from pathlib import Path
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 app = FastAPI(title="Jodi Sawaari", description="Share the ride, split the fare")
 
 Base.metadata.create_all(bind=engine)
@@ -116,3 +119,10 @@ def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
         fare_per_rider=round(group.total_fare / count, 2),
         user_ids=[r.user_id for r in requests],
     )
+BASE_DIR = Path(__file__).resolve().parent.parent
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse(BASE_DIR / "static" / "index.html")

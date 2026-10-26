@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jodi Sawaari</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    header { background: #1a7f5a; color: white; padding: 12px 16px; }
+    header h1 { margin: 0; font-size: 20px; }
+    header p { margin: 2px 0 0; font-size: 13px; }
+    #info { padding: 10px 16px; background: #f3f3f3; font-size: 14px; }
+    #map { height: 70vh; }
+    button { margin-left: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Jodi Sawaari</h1>
+    <p>Share the ride, split the fare</p>
+  </header>
+
+  <div id="info">
+    <span id="status">Click the map to set your pickup point.</span>
+    <button id="reset">Reset</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Map centered on Hyderabad
+    const map = L.map('map').setView([17.44, 78.35], 12);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let pickup = null;
+    let drop = null;
+    let pickupMarker = null;
+    let dropMarker = null;
+    const status = document.getElementById('status');
+
+    map.on('click', function (e) {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      if (!pickup) {
+        pickup = { lat: lat, lng: lng };
+        pickupMarker = L.marker([lat, lng]).addTo(map).bindPopup('Pickup').openPopup();
+        status.textContent = 'Pickup set. Now click your drop point.';
+      } else if (!drop) {
+        drop = { lat: lat, lng: lng };
+        dropMarker = L.marker([lat, lng]).addTo(map).bindPopup('Drop').openPopup();
+        status.textContent =
+          'Pickup: ' + pickup.lat.toFixed(4) + ', ' + pickup.lng.toFixed(4) +
+          '  |  Drop: ' + drop.lat.toFixed(4) + ', ' + drop.lng.toFixed(4);
+      }
+    });
+
+    document.getElementById('reset').addEventListener('click', function () {
+      if (pickupMarker) map.removeLayer(pickupMarker);
+      if (dropMarker) map.removeLayer(dropMarker);
+      pickup = null;
+      drop = null;
+      pickupMarker = null;
+      dropMarker = null;
+      status.textContent = 'Click the map to set your pickup point.';
+    });
+  </script>
+</body>
+</html>
