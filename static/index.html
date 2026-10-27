@@ -6,24 +6,53 @@
   <title>Jodi Sawaari</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
+    :root { --green:#1a7f5a; --green-dark:#146348; --bg:#f4f6f5; --line:#dfe5e2; --text:#1f2a26; --muted:#66736d; --red:#b00020; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Arial, sans-serif; color: #222; }
-    header { background: #1a7f5a; color: white; padding: 12px 16px; }
-    header h1 { margin: 0; font-size: 20px; }
-    header p { margin: 2px 0 0; font-size: 13px; }
-    .layout { display: flex; flex-wrap: wrap; }
-    .panel { width: 340px; max-width: 100%; padding: 14px 16px; }
-    #map { flex: 1; min-width: 300px; height: 80vh; }
-    label { display: block; margin-top: 10px; font-size: 13px; font-weight: bold; }
-    input, select { width: 100%; padding: 8px; margin-top: 4px; font-size: 14px; }
-    button { padding: 9px 14px; margin-top: 12px; margin-right: 6px; font-size: 14px; cursor: pointer; }
-    #find, .join { background: #1a7f5a; color: white; border: none; border-radius: 4px; }
-    #status { margin-top: 10px; font-size: 13px; color: #444; }
-    #error { margin-top: 10px; font-size: 13px; color: #b00020; }
-    #result { margin-top: 10px; padding: 10px; background: #e6f4ee; border-radius: 6px; font-size: 14px; display: none; }
-    .match { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
-    .match .join { margin-top: 8px; padding: 6px 12px; }
-    h3 { margin: 18px 0 0; font-size: 15px; }
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color:var(--text); background:var(--bg); }
+    header { background:var(--green); color:#fff; padding:0 16px; height:56px; display:flex; flex-direction:column; justify-content:center; }
+    header h1 { margin:0; font-size:19px; }
+    header p { margin:0; font-size:12px; opacity:.9; }
+    .app { display:grid; grid-template-columns:400px 1fr; height:calc(100vh - 56px); }
+    .panel { overflow-y:auto; padding:14px; }
+    #map { height:100%; min-height:300px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+    .card h2 { margin:0 0 6px; font-size:14px; }
+    h2.section { font-size:14px; margin:16px 0 0; }
+    .lbl { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+    input[type=text], input[type=tel], input[type=number], input[type=datetime-local], select {
+      width:100%; padding:10px; font-size:15px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    input:focus, select:focus { outline:2px solid #9ad3bc; border-color:var(--green); }
+    .row { display:flex; gap:8px; }
+    .row > input { flex:1; min-width:0; }
+    button { font:inherit; cursor:pointer; }
+    .btn { padding:10px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:14px; }
+    .btn.primary { background:var(--green); border-color:var(--green); color:#fff; font-weight:600; }
+    .btn.primary:hover { background:var(--green-dark); }
+    .btn.danger { color:var(--red); }
+    .btn.block { display:block; width:100%; margin-top:8px; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .results { margin-top:6px; }
+    .result { display:block; width:100%; text-align:left; padding:8px 10px; margin-top:4px; border:1px solid var(--line); border-radius:8px; background:#fafcfb; font-size:13px; }
+    .result:hover { background:#e6f4ee; }
+    .seg { display:flex; gap:6px; flex-wrap:wrap; }
+    .seg label { flex:1; min-width:90px; position:relative; }
+    .seg input { position:absolute; opacity:0; pointer-events:none; }
+    .seg span { display:block; text-align:center; padding:9px 6px; border:1px solid var(--line); border-radius:8px; font-size:13px; background:#fff; cursor:pointer; }
+    .seg input:checked + span { background:var(--green); border-color:var(--green); color:#fff; font-weight:600; }
+    .seg input:disabled + span { opacity:.4; cursor:not-allowed; }
+    .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+    .error { color:var(--red); font-size:13px; margin-top:8px; min-height:1em; }
+    .status { background:#e6f4ee; border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+    .status.expired { background:#fff4e5; }
+    .timer { font-size:26px; font-weight:700; color:var(--green-dark); margin-top:4px; }
+    .route { font-weight:600; font-size:15px; }
+    .match { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:8px; background:#fff; font-size:13px; }
+    .match .who { font-weight:600; font-size:14px; }
+    [hidden] { display:none !important; }
+    @media (max-width:800px) {
+      .app { grid-template-columns:1fr; height:auto; }
+      #map { order:-1; height:34vh; min-height:220px; }
+    }
   </style>
 </head>
 <body>
@@ -32,254 +61,611 @@
     <p>Share the ride, split the fare</p>
   </header>
 
-  <div class="layout">
+  <div class="app">
     <div class="panel">
-      <label for="name">Your name</label>
-      <input id="name" placeholder="e.g. Priya">
 
-      <label for="phone">Phone number</label>
-      <input id="phone" placeholder="10-digit number">
+      <!-- ===== Step form ===== -->
+      <section id="form-view">
+        <div class="card">
+          <h2>1. About you</h2>
+          <label class="lbl" for="name">Name</label>
+          <input id="name" type="text" placeholder="e.g. Priya" autocomplete="name">
+          <label class="lbl" for="phone">Phone number</label>
+          <input id="phone" type="tel" inputmode="numeric" placeholder="10-digit mobile number" autocomplete="tel">
+          <label class="lbl" for="gender">Gender</label>
+          <select id="gender">
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+          </select>
+        </div>
 
-      <label for="gender">Gender</label>
-      <select id="gender">
-        <option value="female">Female</option>
-        <option value="male">Male</option>
-      </select>
+        <div class="card">
+          <h2>2. Where are you going?</h2>
 
-      <label for="time">Departure time</label>
-      <input id="time" type="datetime-local">
+          <label class="lbl" for="pickup-input">Pickup location</label>
+          <div class="row">
+            <input id="pickup-input" type="text" placeholder="Search a place, e.g. Gachibowli">
+            <button class="btn" id="pickup-search" type="button">Search</button>
+          </div>
+          <button class="btn block" id="pickup-locate" type="button">Use my current location</button>
+          <div class="results" id="pickup-results"></div>
 
-      <label for="flex">Flexible by (minutes)</label>
-      <input id="flex" type="number" value="15" min="0" max="120">
+          <label class="lbl" for="drop-input">Drop location</label>
+          <div class="row">
+            <input id="drop-input" type="text" placeholder="Search a place, e.g. Hitech City">
+            <button class="btn" id="drop-search" type="button">Search</button>
+          </div>
+          <div class="results" id="drop-results"></div>
 
-      <label for="pref">Who can ride with you?</label>
-      <select id="pref"></select>
+          <div class="hint">Tip: you can also tap the map to fill the box you used last.</div>
+        </div>
 
-      <label for="fare">Estimated total fare (Rs)</label>
-      <input id="fare" type="number" value="200" min="1">
+        <div class="card">
+          <h2>3. When?</h2>
+          <div class="seg">
+            <label><input type="radio" name="when" value="now" checked><span>Leave now</span></label>
+            <label><input type="radio" name="when" value="later"><span>Schedule</span></label>
+          </div>
+          <div id="later-box" hidden>
+            <label class="lbl" for="time">Departure time</label>
+            <input id="time" type="datetime-local">
+            <label class="lbl" for="flex">I can shift my time by</label>
+            <select id="flex">
+              <option value="10">10 minutes</option>
+              <option value="15" selected>15 minutes</option>
+              <option value="30">30 minutes</option>
+            </select>
+          </div>
+        </div>
 
-      <div id="status">Click the map to set your pickup point.</div>
+        <div class="card">
+          <h2>4. Who can ride with you?</h2>
+          <div class="seg">
+            <label><input type="radio" name="pref" id="pref-mixed" value="mixed" checked><span>Anyone</span></label>
+            <label><input type="radio" name="pref" id="pref-women_only" value="women_only"><span>Women only</span></label>
+            <label><input type="radio" name="pref" id="pref-men_only" value="men_only"><span>Men only</span></label>
+          </div>
+        </div>
 
-      <button id="find">Find riders</button>
-      <button id="refresh" style="display:none">Refresh matches</button>
-      <button id="cancel" style="display:none">Cancel my request</button>
-      <button id="reset">Reset map</button>
+        <div class="card">
+          <h2>5. Estimated fare (₹)</h2>
+          <input id="fare" type="number" min="1" placeholder="Choose pickup and drop for an estimate">
+          <div class="hint" id="fare-hint">This is the full cab fare. It is split between riders.</div>
+        </div>
 
-      <div id="error"></div>
-      <div id="result"></div>
+        <button class="btn primary block" id="find" type="button">Find riders</button>
+        <div class="error" id="error"></div>
+      </section>
 
-      <h3 id="matches-title" style="display:none">Your matches</h3>
-      <div id="matches"></div>
+      <!-- ===== Waiting for riders ===== -->
+      <section id="wait-view" hidden>
+        <div class="card">
+          <div class="route" id="route-line"></div>
+          <div class="hint" id="route-meta"></div>
+        </div>
+
+        <div class="status" id="open-box">
+          <div id="wait-text">Looking for riders on your route...</div>
+          <div class="timer" id="countdown"></div>
+          <div class="hint" id="wait-hint"></div>
+        </div>
+
+        <div class="status expired" id="expired-box" hidden>
+          <strong>No co-riders joined in time.</strong>
+          <div class="hint">Nothing has been booked. Choose what to do next.</div>
+          <button class="btn primary block" id="keep-waiting" type="button">Keep waiting</button>
+        </div>
+
+        <div class="card">
+          <label class="lbl" for="wait-fare" style="margin-top:0">Estimated total fare (₹)</label>
+          <input id="wait-fare" type="number" min="1">
+          <button class="btn block" id="ride-alone" type="button">Ride alone (pay the full fare)</button>
+          <button class="btn danger block" id="cancel-ride" type="button">Cancel ride</button>
+          <div class="error" id="wait-error"></div>
+        </div>
+
+        <h2 class="section" id="matches-title" hidden>Riders on your route</h2>
+        <div id="matches"></div>
+      </section>
+
+      <!-- ===== Done ===== -->
+      <section id="done-view" hidden>
+        <div class="status">
+          <div class="route" id="done-title"></div>
+          <div id="done-route" class="hint"></div>
+          <div style="margin-top:8px" id="done-detail"></div>
+        </div>
+        <div class="card">
+          <div class="hint" style="margin-top:0">Jodi Sawaari does not book the cab itself. Book one in your usual app (Ola, Uber or Rapido) using these addresses, and split the fare by UPI.</div>
+          <button class="btn primary block" id="plan-another" type="button">Plan another ride</button>
+        </div>
+      </section>
+
     </div>
-
     <div id="map"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // ---------- Map ----------
-    const map = L.map('map').setView([17.44, 78.35], 12);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    (function () {
+      const $ = function (id) { return document.getElementById(id); };
 
-    let pickup = null, drop = null, pickupMarker = null, dropMarker = null;
-    let myRequestId = null;
-
-    const statusEl = document.getElementById('status');
-    const errorEl = document.getElementById('error');
-    const resultEl = document.getElementById('result');
-    const fareEl = document.getElementById('fare');
-    const refreshBtn = document.getElementById('refresh');
-    const cancelBtn = document.getElementById('cancel');
-
-    map.on('click', function (e) {
-      if (!pickup) {
-        pickup = { lat: e.latlng.lat, lng: e.latlng.lng };
-        pickupMarker = L.marker([pickup.lat, pickup.lng]).addTo(map).bindPopup('Pickup').openPopup();
-        statusEl.textContent = 'Pickup set. Now click your drop point.';
-      } else if (!drop) {
-        drop = { lat: e.latlng.lat, lng: e.latlng.lng };
-        dropMarker = L.marker([drop.lat, drop.lng]).addTo(map).bindPopup('Drop').openPopup();
-        statusEl.textContent = 'Pickup and drop set. Fill in the form and click Find riders.';
+      // ---------- Small helpers ----------
+      function store(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+      function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+      function prefLabel(p) { return { mixed: 'Anyone', women_only: 'Women only', men_only: 'Men only' }[p] || p; }
+      function fmtTime(s) { return new Date(s).toLocaleString(); }
+      function setError(msg) { $('error').textContent = msg; }
+      function setWaitError(msg) { $('wait-error').textContent = msg; }
+      function shortLabel(name) { return name.split(',').slice(0, 3).join(',').trim(); }
+      function localIso(d) {
+        const p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+               p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
       }
-    });
-
-    function resetMap() {
-      if (pickupMarker) map.removeLayer(pickupMarker);
-      if (dropMarker) map.removeLayer(dropMarker);
-      pickup = drop = pickupMarker = dropMarker = null;
-      statusEl.textContent = 'Click the map to set your pickup point.';
-    }
-    document.getElementById('reset').addEventListener('click', resetMap);
-
-    // ---------- Preference options depend on gender ----------
-    const genderEl = document.getElementById('gender');
-    const prefEl = document.getElementById('pref');
-
-    function addOption(value, text) {
-      const o = document.createElement('option');
-      o.value = value;
-      o.textContent = text;
-      prefEl.appendChild(o);
-    }
-
-    function updatePreferenceOptions() {
-      prefEl.innerHTML = '';
-      addOption('mixed', 'Mixed (anyone)');
-      if (genderEl.value === 'female') addOption('women_only', 'Women only');
-      if (genderEl.value === 'male') addOption('men_only', 'Men only');
-    }
-    genderEl.addEventListener('change', updatePreferenceOptions);
-    updatePreferenceOptions();
-
-    // ---------- Talking to the backend ----------
-    async function api(path, body) {
-      const options = body
-        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-        : {};
-      const res = await fetch(path, options);
-      const data = await res.json();
-      if (!res.ok) {
-        const msg = typeof data.detail === 'string' ? data.detail : 'Please check your inputs.';
-        throw new Error(msg);
-      }
-      return data;
-    }
-
-    function clearMatches() {
-      document.getElementById('matches').innerHTML = '';
-      document.getElementById('matches-title').style.display = 'none';
-    }
-
-    function showMatches(matches) {
-      const box = document.getElementById('matches');
-      box.innerHTML = '';
-      document.getElementById('matches-title').style.display = 'block';
-
-      if (matches.length === 0) {
-        const p = document.createElement('div');
-        p.className = 'match';
-        p.textContent = 'No matches yet. Try Refresh matches in a bit.';
-        box.appendChild(p);
-        return;
+      function haversineKm(lat1, lng1, lat2, lng2) {
+        const r = 6371, rad = Math.PI / 180;
+        const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+        return 2 * r * Math.asin(Math.sqrt(a));
       }
 
-      matches.forEach(function (m) {
-        const div = document.createElement('div');
-        div.className = 'match';
-        const when = new Date(m.depart_time).toLocaleString();
-
-        // textContent keeps other people's names from running as code
-        const info = document.createElement('div');
-        info.textContent =
-          m.rider_name + '  (rating ' + m.rider_rating.toFixed(1) + ')  |  ' +
-          m.preference.replace('_', ' ') + '  |  ' + when;
-        div.appendChild(info);
-
-        const btn = document.createElement('button');
-        btn.className = 'join';
-        btn.textContent = 'Share a ride with ' + m.rider_name;
-        btn.addEventListener('click', function () { joinGroup(m.id); });
-        div.appendChild(btn);
-
-        box.appendChild(div);
-      });
-    }
-
-    async function loadMatches() {
-      const matches = await api('/ride-requests/' + myRequestId + '/matches');
-      showMatches(matches);
-    }
-
-    function leaveRequestState() {
-      myRequestId = null;
-      refreshBtn.style.display = 'none';
-      cancelBtn.style.display = 'none';
-      clearMatches();
-    }
-
-    async function joinGroup(otherRequestId) {
-      errorEl.textContent = '';
-      try {
-        const fare = parseFloat(fareEl.value);
-        if (!fare || fare <= 0) throw new Error('Please enter the estimated total fare.');
-
-        const group = await api('/groups', {
-          request_ids: [myRequestId, otherRequestId],
-          total_fare: fare
-        });
-
-        resultEl.style.display = 'block';
-        resultEl.textContent =
-          'Group #' + group.id + ' confirmed! ' + group.rider_count + ' riders. ' +
-          'Total Rs ' + group.total_fare.toFixed(2) + ', so Rs ' +
-          group.fare_per_rider.toFixed(2) + ' each.';
-        statusEl.textContent = 'Your ride is booked as a group.';
-        leaveRequestState();
-      } catch (err) {
-        errorEl.textContent = err.message;
-      }
-    }
-
-    document.getElementById('find').addEventListener('click', async function () {
-      errorEl.textContent = '';
-      resultEl.style.display = 'none';
-      try {
-        const name = document.getElementById('name').value.trim();
-        const phone = document.getElementById('phone').value.trim();
-        const time = document.getElementById('time').value;
-
-        if (!name || !phone) throw new Error('Please enter your name and phone number.');
-        if (!time) throw new Error('Please choose a departure time.');
-        if (!pickup || !drop) throw new Error('Please click your pickup and drop points on the map.');
-
-        const user = await api('/users/login', {
-          name: name, phone: phone, gender: genderEl.value
-        });
-
-        // If this phone was registered earlier, use the saved gender
-        if (user.gender !== genderEl.value) {
-          genderEl.value = user.gender;
-          updatePreferenceOptions();
-          throw new Error('This phone number is registered as ' + user.gender + '. Please check your options and try again.');
+      async function api(path, body) {
+        const options = body !== undefined
+          ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+          : {};
+        const res = await fetch(path, options);
+        let data = null;
+        try { data = await res.json(); } catch (e) {}
+        if (!res.ok) {
+          const msg = data && typeof data.detail === 'string' ? data.detail : 'Something went wrong. Please check your inputs.';
+          throw new Error(msg);
         }
+        return data;
+      }
 
-        const request = await api('/ride-requests', {
-          user_id: user.id,
-          pickup_lat: pickup.lat, pickup_lng: pickup.lng,
-          drop_lat: drop.lat, drop_lng: drop.lng,
-          depart_time: time,
-          flexibility_minutes: parseInt(document.getElementById('flex').value, 10) || 15,
-          preference: prefEl.value
+      // ---------- Map ----------
+      const map = L.map('map').setView([17.44, 78.35], 12);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const places = { pickup: null, drop: null };
+      const markers = { pickup: null, drop: null };
+      const colors = { pickup: '#1a7f5a', drop: '#c62828' };
+      let activeField = 'pickup';
+      let fareEdited = false;
+
+      function setPlace(kind, lat, lng, label) {
+        places[kind] = { lat: lat, lng: lng, label: label };
+        $(kind + '-input').value = label;
+        if (markers[kind]) map.removeLayer(markers[kind]);
+        markers[kind] = L.circleMarker([lat, lng], {
+          radius: 9, color: '#fff', weight: 3, fillColor: colors[kind], fillOpacity: 1
+        }).addTo(map).bindTooltip(kind === 'pickup' ? 'Pickup' : 'Drop');
+        $(kind + '-results').innerHTML = '';
+        if (kind === 'pickup' && !places.drop) activeField = 'drop';
+        if (places.pickup && places.drop) {
+          map.fitBounds(L.latLngBounds(
+            [places.pickup.lat, places.pickup.lng], [places.drop.lat, places.drop.lng]
+          ), { padding: [50, 50] });
+          estimateFare();
+        } else {
+          map.setView([lat, lng], 15);
+        }
+      }
+
+      function estimateFare() {
+        if (fareEdited || !places.pickup || !places.drop) return;
+        const km = haversineKm(places.pickup.lat, places.pickup.lng, places.drop.lat, places.drop.lng) * 1.3;
+        const fare = Math.max(60, Math.round((40 + 12 * km) / 10) * 10);
+        $('fare').value = fare;
+        $('fare-hint').textContent = 'Rough estimate for about ' + km.toFixed(1) +
+          ' km. Change it if your cab app shows a different fare.';
+      }
+      $('fare').addEventListener('input', function () { fareEdited = true; });
+
+      // ---------- Place search (OpenStreetMap Nominatim) ----------
+      async function searchPlaces(query) {
+        const b = map.getBounds();
+        const viewbox = [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(',');
+        const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in' +
+          '&viewbox=' + viewbox + '&q=' + encodeURIComponent(query);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Search is busy. Please try again in a moment.');
+        return res.json();
+      }
+
+      async function reverseLabel(lat, lng) {
+        try {
+          const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lng);
+          const d = await res.json();
+          if (d && d.display_name) return shortLabel(d.display_name);
+        } catch (e) {}
+        return 'Pinned location';
+      }
+
+      function showMsg(box, text) {
+        const d = document.createElement('div');
+        d.className = 'hint';
+        d.textContent = text;
+        box.appendChild(d);
+      }
+
+      async function runSearch(kind) {
+        const q = $(kind + '-input').value.trim();
+        const box = $(kind + '-results');
+        box.innerHTML = '';
+        if (q.length < 3) { showMsg(box, 'Type at least 3 letters.'); return; }
+        showMsg(box, 'Searching...');
+        const btn = $(kind + '-search');
+        btn.disabled = true;
+        try {
+          const results = await searchPlaces(q);
+          box.innerHTML = '';
+          if (!results.length) {
+            showMsg(box, 'No places found. Try a nearby landmark or an area name.');
+            return;
+          }
+          results.forEach(function (r) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'result';
+            b.textContent = r.display_name;
+            b.addEventListener('click', function () {
+              setPlace(kind, parseFloat(r.lat), parseFloat(r.lon), shortLabel(r.display_name));
+            });
+            box.appendChild(b);
+          });
+        } catch (err) {
+          box.innerHTML = '';
+          showMsg(box, err.message);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      ['pickup', 'drop'].forEach(function (kind) {
+        const input = $(kind + '-input');
+        input.addEventListener('focus', function () { activeField = kind; });
+        input.addEventListener('input', function () {
+          if (places[kind] && input.value !== places[kind].label) {
+            places[kind] = null;
+            if (markers[kind]) { map.removeLayer(markers[kind]); markers[kind] = null; }
+          }
         });
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); runSearch(kind); }
+        });
+        $(kind + '-search').addEventListener('click', function () { runSearch(kind); });
+      });
 
+      $('pickup-locate').addEventListener('click', function () {
+        if (!navigator.geolocation) { setError('Your browser cannot share your location. Please search instead.'); return; }
+        navigator.geolocation.getCurrentPosition(async function (pos) {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          setPlace('pickup', lat, lng, 'Finding address...');
+          const label = await reverseLabel(lat, lng);
+          setPlace('pickup', lat, lng, label);
+        }, function () {
+          setError('Could not get your location. Please search for it instead.');
+        }, { enableHighAccuracy: true, timeout: 10000 });
+      });
+
+      map.on('click', async function (e) {
+        const kind = activeField;
+        const lat = e.latlng.lat, lng = e.latlng.lng;
+        setPlace(kind, lat, lng, 'Finding address...');
+        const label = await reverseLabel(lat, lng);
+        setPlace(kind, lat, lng, label);
+      });
+
+      // ---------- Form controls ----------
+      function updatePrefs() {
+        const g = $('gender').value;
+        $('pref-women_only').disabled = g !== 'female';
+        $('pref-men_only').disabled = g !== 'male';
+        const sel = document.querySelector('input[name=pref]:checked');
+        if (sel && sel.disabled) $('pref-mixed').checked = true;
+      }
+      $('gender').addEventListener('change', updatePrefs);
+
+      document.querySelectorAll('input[name=when]').forEach(function (r) {
+        r.addEventListener('change', function () {
+          $('later-box').hidden = document.querySelector('input[name=when]:checked').value !== 'later';
+        });
+      });
+      $('time').min = localIso(new Date()).slice(0, 16);
+
+      // remember the rider's details on this device
+      $('name').value = load('jodi_name') || '';
+      $('phone').value = load('jodi_phone') || '';
+      if (load('jodi_gender')) $('gender').value = load('jodi_gender');
+      updatePrefs();
+
+      // ---------- Waiting state ----------
+      let myRequestId = null, reqData = null, secondsLeft = null;
+      let pollTimer = null, tickTimer = null, polling = false;
+
+      function stopTimers() {
+        if (pollTimer) clearInterval(pollTimer);
+        if (tickTimer) clearInterval(tickTimer);
+        pollTimer = tickTimer = null;
+      }
+      function startTimers() {
+        stopTimers();
+        pollTimer = setInterval(poll, 8000);
+        tickTimer = setInterval(tick, 1000);
+      }
+      function tick() {
+        if (secondsLeft === null || secondsLeft === undefined || secondsLeft <= 0) return;
+        secondsLeft--;
+        updateCountdown();
+        if (secondsLeft === 0) poll();
+      }
+      function updateCountdown() {
+        const el = $('countdown');
+        if (secondsLeft === null || secondsLeft === undefined) {
+          el.textContent = '';
+          $('wait-hint').textContent = 'We will keep looking until your departure time. You can also ride alone at any time.';
+        } else {
+          const m = Math.floor(secondsLeft / 60), s = secondsLeft % 60;
+          el.textContent = m + ':' + String(s).padStart(2, '0') + ' left';
+          $('wait-hint').textContent = 'If nobody joins in time, you can keep waiting, ride alone or cancel.';
+        }
+      }
+      function setWaitMode(mode) {
+        $('open-box').hidden = mode !== 'open';
+        $('expired-box').hidden = mode !== 'expired';
+        if (mode === 'expired') {
+          $('matches').innerHTML = '';
+          $('matches-title').hidden = true;
+        }
+      }
+
+      function enterWait(request, fare) {
         myRequestId = request.id;
-        statusEl.textContent = 'Request saved for ' + user.name + '. Looking for riders...';
-        refreshBtn.style.display = 'inline-block';
-        cancelBtn.style.display = 'inline-block';
-        await loadMatches();
-      } catch (err) {
-        errorEl.textContent = err.message;
+        reqData = request;
+        if (!places.pickup) setPlace('pickup', request.pickup_lat, request.pickup_lng, request.pickup_label || 'Pickup');
+        if (!places.drop) setPlace('drop', request.drop_lat, request.drop_lng, request.drop_label || 'Drop');
+        $('wait-fare').value = fare || $('fare').value || 200;
+        $('form-view').hidden = true;
+        $('done-view').hidden = true;
+        $('wait-view').hidden = false;
+        $('route-line').textContent = (request.pickup_label || 'Pickup') + '  →  ' + (request.drop_label || 'Drop');
+        $('route-meta').textContent = fmtTime(request.depart_time) + '  ·  ' + prefLabel(request.preference);
+        secondsLeft = request.wait_seconds_left;
+        setWaitMode(request.status === 'expired' ? 'expired' : 'open');
+        updateCountdown();
+        startTimers();
+        poll();
       }
-    });
 
-    refreshBtn.addEventListener('click', async function () {
-      errorEl.textContent = '';
-      try { await loadMatches(); } catch (err) { errorEl.textContent = err.message; }
-    });
+      function showMatches(matches) {
+        const box = $('matches');
+        box.innerHTML = '';
+        $('matches-title').hidden = matches.length === 0;
+        $('wait-text').textContent = matches.length
+          ? matches.length + (matches.length === 1 ? ' rider found on your route!' : ' riders found on your route!')
+          : 'Looking for riders on your route...';
+        matches.forEach(function (m) {
+          const div = document.createElement('div');
+          div.className = 'match';
 
-    cancelBtn.addEventListener('click', async function () {
-      errorEl.textContent = '';
-      try {
-        await api('/ride-requests/' + myRequestId + '/cancel', {});
-        statusEl.textContent = 'Your request was cancelled.';
-        leaveRequestState();
-      } catch (err) {
-        errorEl.textContent = err.message;
+          // textContent keeps other people's names from running as code
+          const who = document.createElement('div');
+          who.className = 'who';
+          who.textContent = m.rider_name + ' (rating ' + m.rider_rating.toFixed(1) + ')';
+          const route = document.createElement('div');
+          route.textContent = (m.pickup_label || 'Pickup') + '  →  ' + (m.drop_label || 'Drop');
+          const meta = document.createElement('div');
+          meta.className = 'hint';
+          meta.textContent = fmtTime(m.depart_time) + '  ·  ' + prefLabel(m.preference);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn primary block';
+          btn.textContent = 'Share a ride with ' + m.rider_name;
+          btn.addEventListener('click', function () { joinGroup(m.id, btn); });
+
+          div.appendChild(who);
+          div.appendChild(route);
+          div.appendChild(meta);
+          div.appendChild(btn);
+          box.appendChild(div);
+        });
       }
-    });
+
+      async function poll() {
+        if (!myRequestId || polling) return;
+        polling = true;
+        try {
+          const r = await api('/ride-requests/' + myRequestId);
+          reqData = r;
+          if (r.status === 'open') {
+            secondsLeft = r.wait_seconds_left;
+            setWaitMode('open');
+            updateCountdown();
+            const matches = await api('/ride-requests/' + myRequestId + '/matches');
+            showMatches(matches);
+            setWaitError('');
+          } else if (r.status === 'expired') {
+            stopTimers();
+            secondsLeft = null;
+            setWaitMode('expired');
+          } else if (r.status === 'matched' || r.status === 'solo') {
+            stopTimers();
+            const g = await api('/ride-requests/' + myRequestId + '/group');
+            showDone(g, r.status);
+          } else {
+            stopTimers();
+            store('jodi_request_id', '');
+            location.reload();
+          }
+        } catch (err) {
+          setWaitError(err.message);
+        } finally {
+          polling = false;
+        }
+      }
+
+      async function joinGroup(otherId, btn) {
+        setWaitError('');
+        try {
+          const fare = parseFloat($('wait-fare').value);
+          if (!fare || fare <= 0) throw new Error('Please enter the estimated total fare.');
+          btn.disabled = true;
+          await api('/groups', { request_ids: [myRequestId, otherId], total_fare: fare });
+          polling = false;
+          poll();
+        } catch (err) {
+          setWaitError(err.message);
+          btn.disabled = false;
+        }
+      }
+
+      $('ride-alone').addEventListener('click', async function () {
+        setWaitError('');
+        try {
+          const fare = parseFloat($('wait-fare').value);
+          if (!fare || fare <= 0) throw new Error('Please enter the estimated fare.');
+          await api('/ride-requests/' + myRequestId + '/solo', { total_fare: fare });
+          polling = false;
+          poll();
+        } catch (err) {
+          setWaitError(err.message);
+        }
+      });
+
+      $('keep-waiting').addEventListener('click', async function () {
+        setWaitError('');
+        try {
+          const r = await api('/ride-requests/' + myRequestId + '/extend', {});
+          reqData = r;
+          secondsLeft = r.wait_seconds_left;
+          setWaitMode('open');
+          updateCountdown();
+          startTimers();
+          poll();
+        } catch (err) {
+          setWaitError(err.message);
+        }
+      });
+
+      $('cancel-ride').addEventListener('click', async function () {
+        setWaitError('');
+        try {
+          await api('/ride-requests/' + myRequestId + '/cancel', {});
+          stopTimers();
+          store('jodi_request_id', '');
+          location.reload();
+        } catch (err) {
+          setWaitError(err.message);
+          poll();
+        }
+      });
+
+      function showDone(g, status) {
+        store('jodi_request_id', '');
+        $('wait-view').hidden = true;
+        $('form-view').hidden = true;
+        $('done-view').hidden = false;
+        const from = reqData && reqData.pickup_label ? reqData.pickup_label : 'Pickup';
+        const to = reqData && reqData.drop_label ? reqData.drop_label : 'Drop';
+        $('done-route').textContent = from + '  →  ' + to;
+        if (status === 'solo') {
+          $('done-title').textContent = 'Solo ride confirmed';
+          $('done-detail').textContent = 'You are riding alone. Estimated fare: ₹' + g.total_fare.toFixed(2) + ', paid by you.';
+        } else {
+          const others = g.rider_count - 1;
+          $('done-title').textContent = 'Ride shared with ' + others + ' other rider' + (others === 1 ? '' : 's') + '!';
+          $('done-detail').textContent = 'Total fare ₹' + g.total_fare.toFixed(2) +
+            ', so each rider pays ₹' + g.fare_per_rider.toFixed(2) + '.';
+        }
+      }
+
+      $('plan-another').addEventListener('click', function () {
+        store('jodi_request_id', '');
+        location.reload();
+      });
+
+      // ---------- Submit the form ----------
+      $('find').addEventListener('click', async function () {
+        setError('');
+        const btn = $('find');
+        try {
+          const name = $('name').value.trim();
+          const phone = $('phone').value.replace(/\s+/g, '');
+          if (!name) throw new Error('Please enter your name.');
+          if (!/^[0-9]{10}$/.test(phone)) throw new Error('Please enter a 10-digit phone number.');
+          if (!places.pickup) throw new Error('Please search for your pickup location and choose one of the results.');
+          if (!places.drop) throw new Error('Please search for your drop location and choose one of the results.');
+
+          const when = document.querySelector('input[name=when]:checked').value;
+          let depart, flex;
+          if (when === 'now') {
+            depart = localIso(new Date());
+            flex = 15;
+          } else {
+            depart = $('time').value;
+            if (!depart) throw new Error('Please choose a departure time.');
+            if (new Date(depart) < new Date()) throw new Error('Please choose a time in the future.');
+            flex = parseInt($('flex').value, 10) || 15;
+          }
+
+          const fare = parseFloat($('fare').value);
+          if (!fare || fare <= 0) throw new Error('Please enter an estimated fare.');
+
+          btn.disabled = true;
+          btn.textContent = 'Finding riders...';
+
+          const user = await api('/users/login', { name: name, phone: phone, gender: $('gender').value });
+          // If this phone was registered earlier, use the saved gender
+          if (user.gender !== $('gender').value) {
+            $('gender').value = user.gender;
+            updatePrefs();
+            throw new Error('This phone number is registered as ' + user.gender + '. Please check your options and try again.');
+          }
+
+          const request = await api('/ride-requests', {
+            user_id: user.id,
+            pickup_lat: places.pickup.lat, pickup_lng: places.pickup.lng, pickup_label: places.pickup.label,
+            drop_lat: places.drop.lat, drop_lng: places.drop.lng, drop_label: places.drop.label,
+            depart_time: depart,
+            flexibility_minutes: flex,
+            preference: document.querySelector('input[name=pref]:checked').value
+          });
+
+          store('jodi_name', name);
+          store('jodi_phone', phone);
+          store('jodi_gender', user.gender);
+          store('jodi_request_id', String(request.id));
+          store('jodi_fare', String(fare));
+          enterWait(request, fare);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Find riders';
+        }
+      });
+
+      // ---------- Resume a ride that is still waiting ----------
+      (async function resume() {
+        const id = load('jodi_request_id');
+        if (!id) return;
+        try {
+          const r = await api('/ride-requests/' + id);
+          if (r.status === 'open' || r.status === 'expired') {
+            enterWait(r, parseFloat(load('jodi_fare')) || 200);
+          } else {
+            store('jodi_request_id', '');
+          }
+        } catch (e) {
+          store('jodi_request_id', '');
+        }
+      })();
+    })();
   </script>
 </body>
 </html>

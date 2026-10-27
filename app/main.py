@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from itertools import combinations
 from pathlib import Path
 
@@ -6,15 +7,72 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from app.database import engine, Base, get_db
+from app.database import engine, Base, get_db, ensure_columns
 from app import models, schemas
 from app.matching import is_match
 
 app = FastAPI(title="Jodi Sawaari", description="Share the ride, split the fare")
 
 Base.metadata.create_all(bind=engine)
+ensure_columns()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# ---------- Time and waiting rules ----------
+
+IST = timezone(timedelta(hours=5, minutes=30))  # India has no daylight saving
+WAIT_LIMIT_MIN = 10          # how long a "leave now" ride waits for a co-rider
+IMMEDIATE_WINDOW_MIN = 30    # rides leaving within this many minutes count as "leave now"
+
+
+def now_ist():
+    return datetime.now(IST).replace(tzinfo=None)
+
+
+def is_immediate(r):
+    if r.created_at is None:
+        return False
+    return (r.depart_time - r.created_at) <= timedelta(minutes=IMMEDIATE_WINDOW_MIN)
+
+
+def seconds_left(r):
+    if r.status != "open" or not is_immediate(r):
+        return None
+    elapsed = (now_ist() - r.created_at).total_seconds()
+    return max(0, int(WAIT_LIMIT_MIN * 60 - elapsed))
+
+
+def expire_stale(db: Session):
+    """Mark open requests as expired if departure has passed or the wait limit ran out."""
+    now = now_ist()
+    changed = False
+    open_requests = db.query(models.RideRequest).filter(models.RideRequest.status == "open").all()
+    for r in open_requests:
+        departure_passed = now > r.depart_time + timedelta(minutes=r.flexibility_minutes)
+        waited_too_long = is_immediate(r) and (now - r.created_at) > timedelta(minutes=WAIT_LIMIT_MIN)
+        if departure_passed or waited_too_long:
+            r.status = "expired"
+            changed = True
+    if changed:
+        db.commit()
+
+
+def request_out(r):
+    out = schemas.RideRequestOut.model_validate(r)
+    out.wait_seconds_left = seconds_left(r)
+    return out
+
+
+def group_out(db: Session, group):
+    members = db.query(models.GroupMember).filter(models.GroupMember.group_id == group.id).all()
+    count = len(members)
+    return schemas.GroupOut(
+        id=group.id,
+        total_fare=group.total_fare,
+        rider_count=count,
+        fare_per_rider=round(group.total_fare / count, 2),
+        user_ids=[m.user_id for m in members],
+    )
 
 
 @app.get("/health")
@@ -50,11 +108,6 @@ def login_or_signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-@app.get("/users", response_model=list[schemas.UserOut])
-def list_users(db: Session = Depends(get_db)):
-    return db.query(models.User).all()
-
-
 # ---------- Ride requests ----------
 
 @app.post("/ride-requests", response_model=schemas.RideRequestOut)
@@ -75,23 +128,30 @@ def create_ride_request(req: schemas.RideRequestCreate, db: Session = Depends(ge
         models.RideRequest.status == "open",
     ).update({"status": "cancelled"})
 
-    new_req = models.RideRequest(**req.model_dump())
+    new_req = models.RideRequest(**req.model_dump(), created_at=now_ist())
     db.add(new_req)
     db.commit()
     db.refresh(new_req)
-    return new_req
+    return request_out(new_req)
 
 
-@app.get("/ride-requests", response_model=list[schemas.RideRequestOut])
-def list_open_requests(db: Session = Depends(get_db)):
-    return db.query(models.RideRequest).filter(models.RideRequest.status == "open").all()
+@app.get("/ride-requests/{request_id}", response_model=schemas.RideRequestOut)
+def get_request_status(request_id: int, db: Session = Depends(get_db)):
+    expire_stale(db)
+    r = db.get(models.RideRequest, request_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Ride request not found")
+    return request_out(r)
 
 
 @app.get("/ride-requests/{request_id}/matches", response_model=list[schemas.MatchOut])
 def find_matches(request_id: int, db: Session = Depends(get_db)):
+    expire_stale(db)
     my_req = db.get(models.RideRequest, request_id)
     if not my_req:
         raise HTTPException(status_code=404, detail="Ride request not found")
+    if my_req.status != "open":
+        raise HTTPException(status_code=400, detail="This ride request is no longer open")
     me = db.get(models.User, my_req.user_id)
 
     others = (
@@ -107,9 +167,13 @@ def find_matches(request_id: int, db: Session = Depends(get_db)):
         if is_match(my_req, me.gender, other, other_user.gender):
             matches.append(
                 schemas.MatchOut(
-                    **schemas.RideRequestOut.model_validate(other).model_dump(),
+                    id=other.id,
                     rider_name=other_user.name,
                     rider_rating=other_user.rating,
+                    preference=other.preference,
+                    depart_time=other.depart_time,
+                    pickup_label=other.pickup_label or "",
+                    drop_label=other.drop_label or "",
                 )
             )
     return matches
@@ -120,18 +184,65 @@ def cancel_request(request_id: int, db: Session = Depends(get_db)):
     r = db.get(models.RideRequest, request_id)
     if not r:
         raise HTTPException(status_code=404, detail="Ride request not found")
-    if r.status != "open":
-        raise HTTPException(status_code=400, detail="Only open requests can be cancelled")
+    if r.status not in ("open", "expired"):
+        raise HTTPException(status_code=400, detail="This ride can no longer be cancelled")
     r.status = "cancelled"
     db.commit()
     db.refresh(r)
-    return r
+    return request_out(r)
+
+
+@app.post("/ride-requests/{request_id}/extend", response_model=schemas.RideRequestOut)
+def extend_request(request_id: int, db: Session = Depends(get_db)):
+    """Keep waiting: restart the wait timer."""
+    r = db.get(models.RideRequest, request_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Ride request not found")
+    if r.status not in ("open", "expired"):
+        raise HTTPException(status_code=400, detail="This ride can no longer be extended")
+    now = now_ist()
+    r.created_at = now
+    if r.depart_time < now:
+        r.depart_time = now
+    r.status = "open"
+    db.commit()
+    db.refresh(r)
+    return request_out(r)
+
+
+@app.post("/ride-requests/{request_id}/solo", response_model=schemas.GroupOut)
+def ride_alone(request_id: int, data: schemas.SoloCreate, db: Session = Depends(get_db)):
+    """Confirm a ride for one person only."""
+    r = db.get(models.RideRequest, request_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Ride request not found")
+    if r.status not in ("open", "expired"):
+        raise HTTPException(status_code=400, detail="This ride can no longer be booked alone")
+
+    group = models.RideGroup(total_fare=data.total_fare)
+    db.add(group)
+    db.flush()
+    db.add(models.GroupMember(group_id=group.id, request_id=r.id, user_id=r.user_id))
+    r.status = "solo"
+    db.commit()
+    return group_out(db, group)
+
+
+@app.get("/ride-requests/{request_id}/group", response_model=schemas.GroupOut)
+def get_group_for_request(request_id: int, db: Session = Depends(get_db)):
+    member = db.query(models.GroupMember).filter(models.GroupMember.request_id == request_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="No group for this request yet")
+    group = db.get(models.RideGroup, member.group_id)
+    return group_out(db, group)
 
 
 # ---------- Groups and fare split ----------
 
 @app.post("/groups", response_model=schemas.GroupOut)
 def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
+    expire_stale(db)
+
     if len(set(data.request_ids)) != len(data.request_ids):
         raise HTTPException(status_code=400, detail="Duplicate request ids")
 
@@ -141,7 +252,7 @@ def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
         if not r:
             raise HTTPException(status_code=404, detail=f"Ride request {rid} not found")
         if r.status != "open":
-            raise HTTPException(status_code=400, detail=f"Ride request {rid} is not open")
+            raise HTTPException(status_code=400, detail="That rider is no longer available")
         requests.append(r)
 
     if len({r.user_id for r in requests}) != len(requests):
@@ -163,14 +274,7 @@ def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
         r.status = "matched"
     db.commit()
 
-    count = len(requests)
-    return schemas.GroupOut(
-        id=group.id,
-        total_fare=group.total_fare,
-        rider_count=count,
-        fare_per_rider=round(group.total_fare / count, 2),
-        user_ids=[r.user_id for r in requests],
-    )
+    return group_out(db, group)
 
 
 # ---------- Web page (keep these at the bottom) ----------

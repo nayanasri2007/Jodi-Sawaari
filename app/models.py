@@ -23,12 +23,16 @@ class RideRequest(Base):
     pickup_lng = Column(Float)
     drop_lat = Column(Float)
     drop_lng = Column(Float)
+    pickup_label = Column(String, default="")
+    drop_label = Column(String, default="")
 
     depart_time = Column(DateTime)
     flexibility_minutes = Column(Integer, default=15)
+    created_at = Column(DateTime)
 
-    preference = Column(String, default="mixed")        # "women_only", "men_only", "mixed"
-    status = Column(String, default="open")             # "open", "matched", "cancelled"
+    preference = Column(String, default="mixed")   # "women_only", "men_only", "mixed"
+    # open, matched, solo, cancelled, expired
+    status = Column(String, default="open")
 
 
 class RideGroup(Base):
