@@ -4,7 +4,7 @@
 
 Jodi Sawaari helps people going the same way at the same time find fellow passengers, so they can share a cab or auto and split the cost. Riders can choose who they travel with: women only, men only, or mixed.
 
-![Jodi Sawaari screenshot](docs/screenshot.png)
+
 
 ## Why I built it
 
