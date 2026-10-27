@@ -69,6 +69,12 @@ def create_ride_request(req: schemas.RideRequestCreate, db: Session = Depends(ge
     if req.preference == "men_only" and user.gender != "male":
         raise HTTPException(status_code=400, detail="Men-only rides are for men")
 
+    # A person can only have one open request: cancel their older ones
+    db.query(models.RideRequest).filter(
+        models.RideRequest.user_id == req.user_id,
+        models.RideRequest.status == "open",
+    ).update({"status": "cancelled"})
+
     new_req = models.RideRequest(**req.model_dump())
     db.add(new_req)
     db.commit()
@@ -107,6 +113,19 @@ def find_matches(request_id: int, db: Session = Depends(get_db)):
                 )
             )
     return matches
+
+
+@app.post("/ride-requests/{request_id}/cancel", response_model=schemas.RideRequestOut)
+def cancel_request(request_id: int, db: Session = Depends(get_db)):
+    r = db.get(models.RideRequest, request_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Ride request not found")
+    if r.status != "open":
+        raise HTTPException(status_code=400, detail="Only open requests can be cancelled")
+    r.status = "cancelled"
+    db.commit()
+    db.refresh(r)
+    return r
 
 
 # ---------- Groups and fare split ----------
@@ -152,17 +171,7 @@ def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
         fare_per_rider=round(group.total_fare / count, 2),
         user_ids=[r.user_id for r in requests],
     )
-@app.post("/ride-requests/{request_id}/cancel", response_model=schemas.RideRequestOut)
-def cancel_request(request_id: int, db: Session = Depends(get_db)):
-    r = db.get(models.RideRequest, request_id)
-    if not r:
-        raise HTTPException(status_code=404, detail="Ride request not found")
-    if r.status != "open":
-        raise HTTPException(status_code=400, detail="Only open requests can be cancelled")
-    r.status = "cancelled"
-    db.commit()
-    db.refresh(r)
-    return r
+
 
 # ---------- Web page (keep these at the bottom) ----------
 
