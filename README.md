@@ -64,4 +64,4 @@ Run the tests with `python -m pytest`.
 
 ## Author
 
-Your Name - https://github.com/nayanasri2007
+NAYANA SRI ARVAPALLY - https://github.com/nayanasri2007
