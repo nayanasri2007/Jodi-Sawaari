@@ -16,11 +16,13 @@
     #map { flex: 1; min-width: 300px; height: 80vh; }
     label { display: block; margin-top: 10px; font-size: 13px; font-weight: bold; }
     input, select { width: 100%; padding: 8px; margin-top: 4px; font-size: 14px; }
-    button { padding: 9px 14px; margin-top: 12px; font-size: 14px; cursor: pointer; }
-    #find { background: #1a7f5a; color: white; border: none; border-radius: 4px; }
+    button { padding: 9px 14px; margin-top: 12px; margin-right: 6px; font-size: 14px; cursor: pointer; }
+    #find, .join { background: #1a7f5a; color: white; border: none; border-radius: 4px; }
     #status { margin-top: 10px; font-size: 13px; color: #444; }
     #error { margin-top: 10px; font-size: 13px; color: #b00020; }
+    #result { margin-top: 10px; padding: 10px; background: #e6f4ee; border-radius: 6px; font-size: 14px; display: none; }
     .match { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+    .match .join { margin-top: 8px; padding: 6px 12px; }
     h3 { margin: 18px 0 0; font-size: 15px; }
   </style>
 </head>
@@ -53,13 +55,18 @@
       <label for="pref">Who can ride with you?</label>
       <select id="pref"></select>
 
+      <label for="fare">Estimated total fare (Rs)</label>
+      <input id="fare" type="number" value="200" min="1">
+
       <div id="status">Click the map to set your pickup point.</div>
 
       <button id="find">Find riders</button>
       <button id="refresh" style="display:none">Refresh matches</button>
+      <button id="cancel" style="display:none">Cancel my request</button>
       <button id="reset">Reset map</button>
 
       <div id="error"></div>
+      <div id="result"></div>
 
       <h3 id="matches-title" style="display:none">Your matches</h3>
       <div id="matches"></div>
@@ -82,6 +89,10 @@
 
     const statusEl = document.getElementById('status');
     const errorEl = document.getElementById('error');
+    const resultEl = document.getElementById('result');
+    const fareEl = document.getElementById('fare');
+    const refreshBtn = document.getElementById('refresh');
+    const cancelBtn = document.getElementById('cancel');
 
     map.on('click', function (e) {
       if (!pickup) {
@@ -95,12 +106,13 @@
       }
     });
 
-    document.getElementById('reset').addEventListener('click', function () {
+    function resetMap() {
       if (pickupMarker) map.removeLayer(pickupMarker);
       if (dropMarker) map.removeLayer(dropMarker);
       pickup = drop = pickupMarker = dropMarker = null;
       statusEl.textContent = 'Click the map to set your pickup point.';
-    });
+    }
+    document.getElementById('reset').addEventListener('click', resetMap);
 
     // ---------- Preference options depend on gender ----------
     const genderEl = document.getElementById('gender');
@@ -136,6 +148,11 @@
       return data;
     }
 
+    function clearMatches() {
+      document.getElementById('matches').innerHTML = '';
+      document.getElementById('matches-title').style.display = 'none';
+    }
+
     function showMatches(matches) {
       const box = document.getElementById('matches');
       box.innerHTML = '';
@@ -153,10 +170,20 @@
         const div = document.createElement('div');
         div.className = 'match';
         const when = new Date(m.depart_time).toLocaleString();
+
         // textContent keeps other people's names from running as code
-        div.textContent =
+        const info = document.createElement('div');
+        info.textContent =
           m.rider_name + '  (rating ' + m.rider_rating.toFixed(1) + ')  |  ' +
-          m.preference.replace('_', ' ') + '  |  ' + when + '  |  request #' + m.id;
+          m.preference.replace('_', ' ') + '  |  ' + when;
+        div.appendChild(info);
+
+        const btn = document.createElement('button');
+        btn.className = 'join';
+        btn.textContent = 'Share a ride with ' + m.rider_name;
+        btn.addEventListener('click', function () { joinGroup(m.id); });
+        div.appendChild(btn);
+
         box.appendChild(div);
       });
     }
@@ -166,8 +193,39 @@
       showMatches(matches);
     }
 
+    function leaveRequestState() {
+      myRequestId = null;
+      refreshBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+      clearMatches();
+    }
+
+    async function joinGroup(otherRequestId) {
+      errorEl.textContent = '';
+      try {
+        const fare = parseFloat(fareEl.value);
+        if (!fare || fare <= 0) throw new Error('Please enter the estimated total fare.');
+
+        const group = await api('/groups', {
+          request_ids: [myRequestId, otherRequestId],
+          total_fare: fare
+        });
+
+        resultEl.style.display = 'block';
+        resultEl.textContent =
+          'Group #' + group.id + ' confirmed! ' + group.rider_count + ' riders. ' +
+          'Total Rs ' + group.total_fare.toFixed(2) + ', so Rs ' +
+          group.fare_per_rider.toFixed(2) + ' each.';
+        statusEl.textContent = 'Your ride is booked as a group.';
+        leaveRequestState();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    }
+
     document.getElementById('find').addEventListener('click', async function () {
       errorEl.textContent = '';
+      resultEl.style.display = 'none';
       try {
         const name = document.getElementById('name').value.trim();
         const phone = document.getElementById('phone').value.trim();
@@ -198,17 +256,29 @@
         });
 
         myRequestId = request.id;
-        statusEl.textContent = 'Request #' + request.id + ' saved for ' + user.name + '.';
-        document.getElementById('refresh').style.display = 'inline-block';
+        statusEl.textContent = 'Request saved for ' + user.name + '. Looking for riders...';
+        refreshBtn.style.display = 'inline-block';
+        cancelBtn.style.display = 'inline-block';
         await loadMatches();
       } catch (err) {
         errorEl.textContent = err.message;
       }
     });
 
-    document.getElementById('refresh').addEventListener('click', async function () {
+    refreshBtn.addEventListener('click', async function () {
       errorEl.textContent = '';
       try { await loadMatches(); } catch (err) { errorEl.textContent = err.message; }
+    });
+
+    cancelBtn.addEventListener('click', async function () {
+      errorEl.textContent = '';
+      try {
+        await api('/ride-requests/' + myRequestId + '/cancel', {});
+        statusEl.textContent = 'Your request was cancelled.';
+        leaveRequestState();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
     });
   </script>
 </body>

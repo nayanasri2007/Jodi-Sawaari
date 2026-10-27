@@ -152,7 +152,17 @@ def create_group(data: schemas.GroupCreate, db: Session = Depends(get_db)):
         fare_per_rider=round(group.total_fare / count, 2),
         user_ids=[r.user_id for r in requests],
     )
-
+@app.post("/ride-requests/{request_id}/cancel", response_model=schemas.RideRequestOut)
+def cancel_request(request_id: int, db: Session = Depends(get_db)):
+    r = db.get(models.RideRequest, request_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Ride request not found")
+    if r.status != "open":
+        raise HTTPException(status_code=400, detail="Only open requests can be cancelled")
+    r.status = "cancelled"
+    db.commit()
+    db.refresh(r)
+    return r
 
 # ---------- Web page (keep these at the bottom) ----------
 
