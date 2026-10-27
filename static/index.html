@@ -6,13 +6,22 @@
   <title>Jodi Sawaari</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #222; }
     header { background: #1a7f5a; color: white; padding: 12px 16px; }
     header h1 { margin: 0; font-size: 20px; }
     header p { margin: 2px 0 0; font-size: 13px; }
-    #info { padding: 10px 16px; background: #f3f3f3; font-size: 14px; }
-    #map { height: 70vh; }
-    button { margin-left: 10px; }
+    .layout { display: flex; flex-wrap: wrap; }
+    .panel { width: 340px; max-width: 100%; padding: 14px 16px; }
+    #map { flex: 1; min-width: 300px; height: 80vh; }
+    label { display: block; margin-top: 10px; font-size: 13px; font-weight: bold; }
+    input, select { width: 100%; padding: 8px; margin-top: 4px; font-size: 14px; }
+    button { padding: 9px 14px; margin-top: 12px; font-size: 14px; cursor: pointer; }
+    #find { background: #1a7f5a; color: white; border: none; border-radius: 4px; }
+    #status { margin-top: 10px; font-size: 13px; color: #444; }
+    #error { margin-top: 10px; font-size: 13px; color: #b00020; }
+    .match { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+    h3 { margin: 18px 0 0; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -21,54 +30,185 @@
     <p>Share the ride, split the fare</p>
   </header>
 
-  <div id="info">
-    <span id="status">Click the map to set your pickup point.</span>
-    <button id="reset">Reset</button>
-  </div>
+  <div class="layout">
+    <div class="panel">
+      <label for="name">Your name</label>
+      <input id="name" placeholder="e.g. Priya">
 
-  <div id="map"></div>
+      <label for="phone">Phone number</label>
+      <input id="phone" placeholder="10-digit number">
+
+      <label for="gender">Gender</label>
+      <select id="gender">
+        <option value="female">Female</option>
+        <option value="male">Male</option>
+      </select>
+
+      <label for="time">Departure time</label>
+      <input id="time" type="datetime-local">
+
+      <label for="flex">Flexible by (minutes)</label>
+      <input id="flex" type="number" value="15" min="0" max="120">
+
+      <label for="pref">Who can ride with you?</label>
+      <select id="pref"></select>
+
+      <div id="status">Click the map to set your pickup point.</div>
+
+      <button id="find">Find riders</button>
+      <button id="refresh" style="display:none">Refresh matches</button>
+      <button id="reset">Reset map</button>
+
+      <div id="error"></div>
+
+      <h3 id="matches-title" style="display:none">Your matches</h3>
+      <div id="matches"></div>
+    </div>
+
+    <div id="map"></div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Map centered on Hyderabad
+    // ---------- Map ----------
     const map = L.map('map').setView([17.44, 78.35], 12);
-
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let pickup = null;
-    let drop = null;
-    let pickupMarker = null;
-    let dropMarker = null;
-    const status = document.getElementById('status');
+    let pickup = null, drop = null, pickupMarker = null, dropMarker = null;
+    let myRequestId = null;
+
+    const statusEl = document.getElementById('status');
+    const errorEl = document.getElementById('error');
 
     map.on('click', function (e) {
-      const lat = e.latlng.lat;
-      const lng = e.latlng.lng;
-
       if (!pickup) {
-        pickup = { lat: lat, lng: lng };
-        pickupMarker = L.marker([lat, lng]).addTo(map).bindPopup('Pickup').openPopup();
-        status.textContent = 'Pickup set. Now click your drop point.';
+        pickup = { lat: e.latlng.lat, lng: e.latlng.lng };
+        pickupMarker = L.marker([pickup.lat, pickup.lng]).addTo(map).bindPopup('Pickup').openPopup();
+        statusEl.textContent = 'Pickup set. Now click your drop point.';
       } else if (!drop) {
-        drop = { lat: lat, lng: lng };
-        dropMarker = L.marker([lat, lng]).addTo(map).bindPopup('Drop').openPopup();
-        status.textContent =
-          'Pickup: ' + pickup.lat.toFixed(4) + ', ' + pickup.lng.toFixed(4) +
-          '  |  Drop: ' + drop.lat.toFixed(4) + ', ' + drop.lng.toFixed(4);
+        drop = { lat: e.latlng.lat, lng: e.latlng.lng };
+        dropMarker = L.marker([drop.lat, drop.lng]).addTo(map).bindPopup('Drop').openPopup();
+        statusEl.textContent = 'Pickup and drop set. Fill in the form and click Find riders.';
       }
     });
 
     document.getElementById('reset').addEventListener('click', function () {
       if (pickupMarker) map.removeLayer(pickupMarker);
       if (dropMarker) map.removeLayer(dropMarker);
-      pickup = null;
-      drop = null;
-      pickupMarker = null;
-      dropMarker = null;
-      status.textContent = 'Click the map to set your pickup point.';
+      pickup = drop = pickupMarker = dropMarker = null;
+      statusEl.textContent = 'Click the map to set your pickup point.';
+    });
+
+    // ---------- Preference options depend on gender ----------
+    const genderEl = document.getElementById('gender');
+    const prefEl = document.getElementById('pref');
+
+    function addOption(value, text) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      prefEl.appendChild(o);
+    }
+
+    function updatePreferenceOptions() {
+      prefEl.innerHTML = '';
+      addOption('mixed', 'Mixed (anyone)');
+      if (genderEl.value === 'female') addOption('women_only', 'Women only');
+      if (genderEl.value === 'male') addOption('men_only', 'Men only');
+    }
+    genderEl.addEventListener('change', updatePreferenceOptions);
+    updatePreferenceOptions();
+
+    // ---------- Talking to the backend ----------
+    async function api(path, body) {
+      const options = body
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        : {};
+      const res = await fetch(path, options);
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = typeof data.detail === 'string' ? data.detail : 'Please check your inputs.';
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function showMatches(matches) {
+      const box = document.getElementById('matches');
+      box.innerHTML = '';
+      document.getElementById('matches-title').style.display = 'block';
+
+      if (matches.length === 0) {
+        const p = document.createElement('div');
+        p.className = 'match';
+        p.textContent = 'No matches yet. Try Refresh matches in a bit.';
+        box.appendChild(p);
+        return;
+      }
+
+      matches.forEach(function (m) {
+        const div = document.createElement('div');
+        div.className = 'match';
+        const when = new Date(m.depart_time).toLocaleString();
+        // textContent keeps other people's names from running as code
+        div.textContent =
+          m.rider_name + '  (rating ' + m.rider_rating.toFixed(1) + ')  |  ' +
+          m.preference.replace('_', ' ') + '  |  ' + when + '  |  request #' + m.id;
+        box.appendChild(div);
+      });
+    }
+
+    async function loadMatches() {
+      const matches = await api('/ride-requests/' + myRequestId + '/matches');
+      showMatches(matches);
+    }
+
+    document.getElementById('find').addEventListener('click', async function () {
+      errorEl.textContent = '';
+      try {
+        const name = document.getElementById('name').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        const time = document.getElementById('time').value;
+
+        if (!name || !phone) throw new Error('Please enter your name and phone number.');
+        if (!time) throw new Error('Please choose a departure time.');
+        if (!pickup || !drop) throw new Error('Please click your pickup and drop points on the map.');
+
+        const user = await api('/users/login', {
+          name: name, phone: phone, gender: genderEl.value
+        });
+
+        // If this phone was registered earlier, use the saved gender
+        if (user.gender !== genderEl.value) {
+          genderEl.value = user.gender;
+          updatePreferenceOptions();
+          throw new Error('This phone number is registered as ' + user.gender + '. Please check your options and try again.');
+        }
+
+        const request = await api('/ride-requests', {
+          user_id: user.id,
+          pickup_lat: pickup.lat, pickup_lng: pickup.lng,
+          drop_lat: drop.lat, drop_lng: drop.lng,
+          depart_time: time,
+          flexibility_minutes: parseInt(document.getElementById('flex').value, 10) || 15,
+          preference: prefEl.value
+        });
+
+        myRequestId = request.id;
+        statusEl.textContent = 'Request #' + request.id + ' saved for ' + user.name + '.';
+        document.getElementById('refresh').style.display = 'inline-block';
+        await loadMatches();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('refresh').addEventListener('click', async function () {
+      errorEl.textContent = '';
+      try { await loadMatches(); } catch (err) { errorEl.textContent = err.message; }
     });
   </script>
 </body>

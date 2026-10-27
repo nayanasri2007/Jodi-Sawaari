@@ -2,10 +2,12 @@ from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field
 
+
 class UserCreate(BaseModel):
     name: str
     phone: str
     gender: Literal["male", "female"]
+
 
 class UserOut(BaseModel):
     id: int
@@ -15,6 +17,7 @@ class UserOut(BaseModel):
     verified: bool
     rating: float
     model_config = {"from_attributes": True}
+
 
 class RideRequestCreate(BaseModel):
     user_id: int
@@ -26,10 +29,18 @@ class RideRequestCreate(BaseModel):
     flexibility_minutes: int = 15
     preference: Literal["women_only", "men_only", "mixed"] = "mixed"
 
+
 class RideRequestOut(RideRequestCreate):
     id: int
     status: str
     model_config = {"from_attributes": True}
+
+
+class MatchOut(RideRequestOut):
+    rider_name: str
+    rider_rating: float
+
+
 class GroupCreate(BaseModel):
     request_ids: list[int] = Field(min_length=2)
     total_fare: float = Field(gt=0)
